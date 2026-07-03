@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Gridlock City</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{background:#0d0d1f;font-family:'Arial Black',Arial,sans-serif;overflow:hidden;height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:max(env(safe-area-inset-top,0px),6px);}
+#topbar{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:500px;padding:4px 10px;margin-bottom:4px;}
+.stat-box{background:#0d0d2b;border:2px solid #333;border-radius:10px;padding:4px 10px;text-align:center;}
+.stat-label{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1px;}
+.stat-val{font-size:17px;color:#fff;font-weight:900;}
+#honk-face{width:36px;height:36px;object-fit:contain;cursor:default;transition:all 0.3s;}
+.coin-box{display:flex;align-items:center;gap:5px;}
+.coin-icon{width:20px;height:20px;object-fit:contain;}
+.ctrl-btn{background:#0d0d2b;border:2px solid #444;border-radius:10px;width:40px;height:40px;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.ctrl-btn:active{background:#1a1a4e;transform:scale(0.92);}
+#game-wrapper{position:relative;}
+#grid-canvas{display:block;border-radius:8px;touch-action:none;}
+#win-screen{display:none;position:fixed;inset:0;background:rgba(10,10,30,0.92);flex-direction:column;align-items:center;justify-content:center;z-index:100;}
+#win-screen.show{display:flex;}
+.confetti-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;z-index:-1;}
+.win-title{font-size:48px;color:#FFD700;text-shadow:0 0 20px #FFD700,0 4px 0 #b8860b;margin-bottom:10px;animation:bounce 0.6s infinite alternate;}
+@keyframes bounce{from{transform:scale(1);}to{transform:scale(1.08);}}
+.win-stars{display:flex;gap:6px;justify-content:center;margin:10px 0 20px;}
+.star-icon{font-size:38px;}
+.win-btn{background:linear-gradient(180deg,#4CAF50,#2e7d32);color:#fff;border:none;border-radius:16px;font-size:22px;font-weight:900;padding:14px 40px;cursor:pointer;box-shadow:0 6px 0 #1b5e20;text-transform:uppercase;letter-spacing:2px;transition:transform 0.1s;}
+.win-btn:active{transform:translateY(4px);box-shadow:0 2px 0 #1b5e20;}
+#level-select{display:none;position:fixed;inset:0;background:rgba(10,10,30,0.95);flex-direction:column;align-items:center;justify-content:center;z-index:100;}
+#level-select.show{display:flex;}
+.ls-title{font-size:36px;color:#FFD700;margin-bottom:30px;text-shadow:0 3px 0 #b8860b;}
+.ls-btn{background:linear-gradient(180deg,#2196F3,#1565c0);color:#fff;border:none;border-radius:14px;font-size:20px;font-weight:900;padding:14px 48px;margin:8px;cursor:pointer;box-shadow:0 5px 0 #0d47a1;width:200px;text-transform:uppercase;}
+.ls-btn:active{transform:translateY(3px);box-shadow:0 2px 0 #0d47a1;}
+#start-screen{display:flex;position:fixed;inset:0;background:#1a1a3e;flex-direction:column;align-items:center;justify-content:center;z-index:200;}
+.logo{font-size:clamp(28px,10vw,42px);color:#FFD700;text-shadow:0 0 20px #FFD700,0 5px 0 #b8860b;margin-bottom:4px;font-style:italic;padding:0 12px;text-align:center;}
+.logo-sub{font-size:16px;color:#aaa;letter-spacing:4px;margin-bottom:40px;}
+.taxi-emoji{font-size:80px;margin-bottom:20px;animation:honk-idle 1s infinite alternate;}
+@keyframes honk-idle{from{transform:translateX(-8px) rotate(-3deg);}to{transform:translateX(8px) rotate(3deg);}}
+.start-btn{background:linear-gradient(180deg,#FFD700,#FFA000);color:#1a1a3e;border:none;border-radius:16px;font-size:24px;font-weight:900;padding:16px 56px;cursor:pointer;box-shadow:0 7px 0 #e65100;text-transform:uppercase;letter-spacing:2px;}
+.start-btn:active{transform:translateY(5px);box-shadow:0 2px 0 #e65100;}
+</style>
+</head>
+<body>
+
+<div id="start-screen">
+  <div class="taxi-emoji">🚕</div>
+  <div class="logo">GRIDLOCK CITY</div>
+  <div class="logo-sub">PUZZLE GAME</div>
+  <button class="start-btn" onclick="showLevelSelect()">PLAY</button>
+</div>
+
+<div id="level-select">
+  <div class="ls-title">SELECT LEVEL</div>
+  <button class="ls-btn" onclick="startLevel(0)">Level 1 — Easy</button>
+  <button class="ls-btn" onclick="startLevel(1)">Level 2 — Medium</button>
+  <button class="ls-btn" onclick="startLevel(2)">Level 3 — Hard</button>
+</div>
+
+<div id="topbar">
+  <button class="ctrl-btn" onclick="startLevel(currentLevel)" title="Restart">↺</button>
+  <div class="stat-box coin-box"><img class="coin-icon" src="assets/ui/coin.png" alt="coins"><span class="stat-val" id="coin-count">0</span></div>
+  <img id="honk-face" src="assets/honk-expressions/honk-happy.png" alt="Honk">
+  <div class="stat-box"><div class="stat-label">Lv·Moves</div><div class="stat-val"><span id="lvl-num">1</span>·<span id="move-count">0</span></div></div>
+  <div class="stat-box"><div class="stat-label">Time</div><div class="stat-val" id="timer-val">0:00</div></div>
+  <button class="ctrl-btn" onclick="useHint()" title="Hint (5 coins)">💡</button>
+  <button class="ctrl-btn" onclick="showLevelSelect()" title="Menu">☰</button>
+</div>
+<div id="game-wrapper">
+  <canvas id="grid-canvas"></canvas>
+</div>
+
+<div id="win-screen">
+  <img class="confetti-bg" src="assets/ui/confetti.png" alt="">
+  <div style="font-size:64px;margin-bottom:10px;">🚕💨</div>
+  <div class="win-title">ESCAPE!</div>
+  <div class="win-stars" id="win-stars"></div>
+  <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:24px;text-shadow:0 2px 8px #000;" id="win-stats"></div>
+  <button class="win-btn" onclick="nextLevel()">NEXT LEVEL</button>
+  <button class="win-btn" style="margin-top:12px;background:linear-gradient(180deg,#555,#333);box-shadow:0 6px 0 #111;" onclick="showLevelSelect()">MENU</button>
+</div>
+
+<script>
+const GRID_COLS=6, GRID_ROWS=10, CELL=64;
+let canvas,ctx,W,H;
+let currentLevel=0,moves=0,seconds=0,timerInt=null;
+let vehicles=[],dragging=null,dragStartCell=0,dragStartPos=0;
+let won=false;
+let hintVehicle=null, hintTimer=null;
+let coins=parseInt(localStorage.getItem('gridlock_coins')||'0',10);
+let levelStars=JSON.parse(localStorage.getItem('gridlock_stars')||'[0,0,0]');
+
+// ---- AUDIO (WebAudio API — no assets needed) ----
+let _ac=null;
+function getAC(){if(!_ac)_ac=new(window.AudioContext||window.webkitAudioContext)();return _ac;}
+function beep(freq,type,dur,vol=0.25){
+  try{const ac=getAC(),o=ac.createOscillator(),g=ac.createGain();
+  o.connect(g);g.connect(ac.destination);
+  o.type=type;o.frequency.value=freq;
+  g.gain.setValueAtTime(vol,ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+dur);
+  o.start();o.stop(ac.currentTime+dur);}catch(e){}
+}
+function sndPick(){beep(500,'square',0.07,0.15);}
+function sndDrop(){beep(160,'sine',0.18,0.22);}
+function sndMove(){beep(300,'triangle',0.06,0.1);}
+function sndWin(){[523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,'sine',0.35,0.28),i*130));}
+
+// Vehicle PNG assets — all ship in horizontal orientation; rotated 90° when placed vertically.
+const VEHICLE_SRC={
+  HONK:  'assets/vehicles/Honk.png',
+  POLICE:'assets/vehicles/police.png',
+  BUS:   'assets/vehicles/bus.png',
+  TRUCK: 'assets/vehicles/truck.png',
+  FIRE:  'assets/vehicles/firetruck.png',
+  VAN:   'assets/vehicles/van.png',
+  LIMO:  'assets/vehicles/limo.png',
+  MOTO:  'assets/vehicles/moto.png',
+};
+// Tight content crop per vehicle (alpha-channel bbox) — the source PNGs have
+// 30-50% transparent padding at wildly different ratios per vehicle, which
+// stretched/distorted cars when the full canvas was drawn into the grid cell.
+const VEHICLE_CROP={
+  HONK:  {sx:51, sy:14, sw:574, sh:313},
+  POLICE:{sx:83, sy:27, sw:512, sh:326},
+  BUS:   {sx:44, sy:73, sw:586, sh:223},
+  TRUCK: {sx:44, sy:73, sw:589, sh:223},
+  FIRE:  {sx:44, sy:73, sw:589, sh:223},
+  VAN:   {sx:51, sy:73, sw:579, sh:223},
+  LIMO:  {sx:47, sy:73, sw:583, sh:223},
+  MOTO:  {sx:47, sy:69, sw:583, sh:233},
+};
+const vehicleImages={};
+for(const [label,src] of Object.entries(VEHICLE_SRC)){
+  const img=new Image();
+  img.loaded=false;
+  img.onload=()=>{img.loaded=true; if(vehicles.length) render();};
+  img.src=src;
+  vehicleImages[label]=img;
+}
+// Background image removed — replaced by canvas-drawn gradient (saves 13MB)
+
+// LEVEL DEFINITIONS
+// Each vehicle: {id, col, row, len, horiz, color, outline, label}
+// Honk is always id=0, horiz, row=2, exit at col 4 (needs to reach col 4-5)
+const LEVELS=[
+  // Level 1 — Easy (6×10, 10 vehicles, ~3 moves)
+  // Solution: POLICE down→r5, TRUCK down→r5, HONK right
+  [
+    {id:0, col:0,row:4,len:2,horiz:true, color:'#FFD700',outline:'#b8860b',label:'HONK'},
+    {id:1, col:3,row:3,len:2,horiz:false,color:'#2196F3',outline:'#0d47a1',label:'POLICE'},
+    {id:2, col:5,row:3,len:2,horiz:false,color:'#795548',outline:'#3e2723',label:'TRUCK'},
+    {id:3, col:4,row:6,len:3,horiz:false,color:'#FF7043',outline:'#bf360c',label:'FIRE'},
+    {id:4, col:2,row:1,len:1,horiz:true, color:'#E53935',outline:'#7f0000',label:'MOTO'},
+    {id:5, col:0,row:7,len:3,horiz:true, color:'#FF9800',outline:'#e65100',label:'BUS'},
+    {id:6, col:0,row:8,len:2,horiz:true, color:'#9C27B0',outline:'#4a148c',label:'VAN'},
+    {id:7, col:0,row:0,len:2,horiz:true, color:'#00897B',outline:'#004d40',label:'LIMO'},
+    {id:8, col:3,row:0,len:2,horiz:true, color:'#795548',outline:'#3e2723',label:'TRUCK'},
+    {id:9, col:0,row:5,len:2,horiz:true, color:'#9C27B0',outline:'#4a148c',label:'VAN'},
+    {id:10,col:2,row:2,len:2,horiz:true, color:'#2196F3',outline:'#0d47a1',label:'POLICE'},
+  ],
+  // Level 2 — Medium (6×10, 11 vehicles, ~5 moves)
+  // Solution: MOTO left→c0, POLICE up→r0, FIRE up→r1, TRUCK down→r5, HONK right
+  [
+    {id:0, col:0,row:4,len:2,horiz:true, color:'#FFD700',outline:'#b8860b',label:'HONK'},
+    {id:1, col:2,row:2,len:3,horiz:false,color:'#2196F3',outline:'#0d47a1',label:'POLICE'},
+    {id:2, col:3,row:3,len:2,horiz:false,color:'#FF7043',outline:'#bf360c',label:'FIRE'},
+    {id:3, col:5,row:3,len:2,horiz:false,color:'#795548',outline:'#3e2723',label:'TRUCK'},
+    {id:4, col:3,row:0,len:3,horiz:true, color:'#FF9800',outline:'#e65100',label:'BUS'},
+    {id:5, col:2,row:6,len:2,horiz:true, color:'#9C27B0',outline:'#4a148c',label:'VAN'},
+    {id:6, col:2,row:1,len:1,horiz:true, color:'#E53935',outline:'#7f0000',label:'MOTO'},
+    {id:7, col:4,row:6,len:2,horiz:false,color:'#00897B',outline:'#004d40',label:'LIMO'},
+    {id:8, col:0,row:0,len:2,horiz:true, color:'#795548',outline:'#3e2723',label:'TRUCK'},
+    {id:9, col:0,row:6,len:2,horiz:false,color:'#00897B',outline:'#004d40',label:'LIMO'},
+    {id:10,col:3,row:8,len:2,horiz:true, color:'#9C27B0',outline:'#4a148c',label:'VAN'},
+  ],
+  // Level 3 — Hard (6×10, 11 vehicles, ~8 moves)
+  // Solution: MOTO left→c0, VAN left→c1, POLICE down→r5, BUS left→c0, FIRE up→r1, LIMO down→r7, TRUCK down→r5, HONK right
+  [
+    {id:0, col:0,row:4,len:2,horiz:true, color:'#FFD700',outline:'#b8860b',label:'HONK'},
+    {id:1, col:3,row:2,len:3,horiz:false,color:'#2196F3',outline:'#0d47a1',label:'POLICE'},
+    {id:2, col:4,row:3,len:2,horiz:false,color:'#FF7043',outline:'#bf360c',label:'FIRE'},
+    {id:3, col:5,row:3,len:2,horiz:false,color:'#795548',outline:'#3e2723',label:'TRUCK'},
+    {id:4, col:3,row:1,len:3,horiz:true, color:'#FF9800',outline:'#e65100',label:'BUS'},
+    {id:5, col:2,row:6,len:2,horiz:true, color:'#9C27B0',outline:'#4a148c',label:'VAN'},
+    {id:6, col:1,row:6,len:1,horiz:true, color:'#E53935',outline:'#7f0000',label:'MOTO'},
+    {id:7, col:5,row:5,len:2,horiz:false,color:'#00897B',outline:'#004d40',label:'LIMO'},
+    {id:8, col:0,row:0,len:2,horiz:true, color:'#FF9800',outline:'#e65100',label:'BUS'},
+    {id:9, col:0,row:2,len:2,horiz:false,color:'#00897B',outline:'#004d40',label:'LIMO'},
+    {id:10,col:2,row:8,len:2,horiz:true, color:'#9C27B0',outline:'#4a148c',label:'VAN'},
+  ],
+];
+
+function showLevelSelect(){
+  document.getElementById('start-screen').style.display='none';
+  document.getElementById('win-screen').classList.remove('show');
+  clearInterval(timerInt);
+  const names=['Easy','Medium','Hard'];
+  document.querySelectorAll('.ls-btn').forEach((btn,i)=>{
+    const s=levelStars[i];
+    btn.innerHTML=`Level ${i+1} — ${names[i]}<br><span style="font-size:18px;letter-spacing:2px">${'⭐'.repeat(s)}${'<span style="opacity:0.25">⭐</span>'.repeat(3-s)}</span>`;
+  });
+  document.getElementById('level-select').classList.add('show');
+}
+
+function startLevel(n){
+  currentLevel=n;
+  document.getElementById('level-select').classList.remove('show');
+  document.getElementById('win-screen').classList.remove('show');
+  document.getElementById('lvl-num').textContent=n+1;
+  moves=0; seconds=0; won=false;
+  document.getElementById('move-count').textContent='0';
+  document.getElementById('timer-val').textContent='0:00';
+  clearInterval(timerInt);
+  timerInt=setInterval(tickTimer,1000);
+  // Deep copy level
+  vehicles=LEVELS[n].map(v=>({...v}));
+  updateFace();
+  render();
+}
+
+function nextLevel(){
+  if(currentLevel<LEVELS.length-1) startLevel(currentLevel+1);
+  else showLevelSelect();
+}
+
+function tickTimer(){
+  if(won) return;
+  seconds++;
+  const m=Math.floor(seconds/60), s=seconds%60;
+  document.getElementById('timer-val').textContent=m+':'+(s<10?'0':'')+s;
+  updateFace();
+}
+
+function updateFace(){
+  const el=document.getElementById('honk-face');
+  const honk=vehicles.find(v=>v.id===0);
+  let pathClear=true;
+  for(let c=honk.col+honk.len;c<GRID_COLS;c++){
+    if(getVehicleAt(c,honk.row,null)!==null){pathClear=false;break;}
+  }
+  const completelyBlocked=!pathClear && !canMoveTo(honk,honk.col-1) && !canMoveTo(honk,honk.col+1);
+  if(pathClear)            el.src='assets/honk-expressions/honk-happy.png';
+  else if(completelyBlocked) el.src='assets/honk-expressions/honk-angry.png';
+  else if(seconds>25)      el.src='assets/honk-expressions/honk-nervous.png';
+  else                     el.src='assets/honk-expressions/honk-happy.png';
+}
+
+function useHint(){
+  if(won || !vehicles.length) return;
+  if(coins<5){
+    // Flash coin counter red
+    const el=document.getElementById('coin-count');
+    el.style.color='#f44';
+    setTimeout(()=>el.style.color='',600);
+    return;
+  }
+  coins-=5;
+  document.getElementById('coin-count').textContent=coins;
+  localStorage.setItem('gridlock_coins',coins);
+  // Find first vehicle blocking HONK's path
+  const honk=vehicles.find(v=>v.id===0);
+  let target=null;
+  for(let c=honk.col+honk.len;c<GRID_COLS;c++){
+    const b=getVehicleAt(c,honk.row,null);
+    if(b){target=b;break;}
+  }
+  hintVehicle=target||honk;
+  clearTimeout(hintTimer);
+  render();
+  hintTimer=setTimeout(()=>{hintVehicle=null;render();},2000);
+}
+
+function getVehicleAt(col,row,exclude){
+  for(const v of vehicles){
+    if(v===exclude) continue;
+    if(v.horiz){
+      if(v.row===row && col>=v.col && col<v.col+v.len) return v;
+    } else {
+      if(v.col===col && row>=v.row && row<v.row+v.len) return v;
+    }
+  }
+  return null;
+}
+
+function canMoveTo(v, newPos){
+  // newPos = new col (if horiz) or new row (if vert)
+  if(v.horiz){
+    if(newPos<0 || newPos+v.len>GRID_COLS) return false;
+    const lo=Math.min(newPos,v.col), hi=Math.max(newPos+v.len,v.col+v.len);
+    for(let c=lo;c<hi;c++){
+      if(c>=v.col && c<v.col+v.len) continue;
+      if(getVehicleAt(c,v.row,v)!==null) return false;
+    }
+  } else {
+    if(newPos<0 || newPos+v.len>GRID_ROWS) return false;
+    const lo=Math.min(newPos,v.row), hi=Math.max(newPos+v.len,v.row+v.len);
+    for(let r=lo;r<hi;r++){
+      if(r>=v.row && r<v.row+v.len) continue;
+      if(getVehicleAt(v.col,r,v)!==null) return false;
+    }
+  }
+  return true;
+}
+
+// ---- DRAWING ----
+const PADDING=4;
+let _listenersAdded=false;
+
+function resizeCanvas(){
+  if(!canvas) return;
+  const topbarH=document.getElementById('topbar').getBoundingClientRect().height||56;
+  const availW=window.innerWidth-8;
+  const availH=window.innerHeight-topbarH-12;
+  const CS=Math.max(32, Math.floor(Math.min(availW/GRID_COLS, availH/GRID_ROWS)));
+  W=GRID_COLS*CS; H=GRID_ROWS*CS;
+  canvas.width=W; canvas.height=H;
+  Object.assign(canvas.style,{width:W+'px',height:H+'px'});
+  window.CELL_SIZE=CS;
+  ctx=null; // force context re-fetch
+  if(vehicles.length) render();
+}
+
+function setup(){
+  canvas=document.getElementById('grid-canvas');
+  if(!_listenersAdded){
+    canvas.addEventListener('mousedown',startDrag);
+    canvas.addEventListener('touchstart',startDrag,{passive:false});
+    canvas.addEventListener('mousemove',doDrag);
+    canvas.addEventListener('touchmove',doDrag,{passive:false});
+    canvas.addEventListener('mouseup',endDrag);
+    canvas.addEventListener('touchend',endDrag);
+    window.addEventListener('mouseup',endDrag);
+    window.addEventListener('resize',resizeCanvas);
+    window.addEventListener('orientationchange',()=>setTimeout(resizeCanvas,100));
+    _listenersAdded=true;
+  }
+  resizeCanvas();
+}
+
+function render(){
+  if(!ctx){ctx=canvas.getContext('2d');}
+  const CS=W/GRID_COLS;
+  ctx.clearRect(0,0,W,H);
+
+  // Programmatic dark city background — no heavy image needed
+  const grad=ctx.createLinearGradient(0,0,W,H);
+  grad.addColorStop(0,'#0c1020');
+  grad.addColorStop(1,'#07090f');
+  ctx.fillStyle=grad;
+  ctx.fillRect(0,0,W,H);
+
+  // Subtle cell fill
+  ctx.fillStyle='rgba(20,24,48,0.45)';
+  for(let r=0;r<GRID_ROWS;r++) for(let c=0;c<GRID_COLS;c++){
+    ctx.fillRect(c*CS+1, r*CS+1, CS-2, CS-2);
+  }
+
+  // Grid lines
+  ctx.strokeStyle='rgba(255,255,255,0.45)';
+  ctx.lineWidth=2;
+  for(let i=0;i<=GRID_COLS;i++){
+    ctx.beginPath();ctx.moveTo(i*CS,0);ctx.lineTo(i*CS,H);ctx.stroke();
+  }
+  for(let i=0;i<=GRID_ROWS;i++){
+    ctx.beginPath();ctx.moveTo(0,i*CS);ctx.lineTo(W,i*CS);ctx.stroke();
+  }
+
+  // Cell dots
+  ctx.fillStyle='rgba(255,255,255,0.25)';
+  for(let r=0;r<GRID_ROWS;r++) for(let c=0;c<GRID_COLS;c++){
+    ctx.beginPath();ctx.arc(c*CS+CS/2,r*CS+CS/2,4,0,Math.PI*2);ctx.fill();
+  }
+
+  // Draw vehicles (back to front, dragging last)
+  const sorted=[...vehicles].sort((a,b)=>(a===dragging?1:b===dragging?-1:0));
+  for(const v of sorted) drawVehicle(v,CS);
+
+  // Exit gate drawn AFTER vehicles so it's always visible on top
+  const exitRow=4;
+  const ey=exitRow*CS+CS/2;
+  ctx.save();
+  ctx.fillStyle='rgba(76,175,80,0.22)';
+  ctx.fillRect(W-CS, exitRow*CS, CS, CS);
+  ctx.strokeStyle='#4CAF50'; ctx.lineWidth=3;
+  ctx.setLineDash([5,4]);
+  ctx.strokeRect(W-CS+2, exitRow*CS+2, CS-4, CS-4);
+  ctx.setLineDash([]);
+  ctx.shadowColor='#4CAF50'; ctx.shadowBlur=16;
+  ctx.fillStyle='#69F0AE';
+  ctx.fillRect(W-6, exitRow*CS, 6, CS);
+  ctx.shadowBlur=0;
+  ctx.strokeStyle='#4CAF50'; ctx.lineWidth=4;
+  ctx.beginPath();ctx.moveTo(W-CS*0.5,ey);ctx.lineTo(W-8,ey);ctx.stroke();
+  ctx.fillStyle='#4CAF50';
+  ctx.beginPath();ctx.moveTo(W,ey);ctx.lineTo(W-14,ey-8);ctx.lineTo(W-14,ey+8);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#fff'; ctx.font=`bold ${CS*0.22}px Arial`;
+  ctx.textAlign='center';
+  ctx.shadowColor='#000'; ctx.shadowBlur=4;
+  ctx.fillText('EXIT',W-CS/2,exitRow*CS+CS*0.25);
+  ctx.shadowBlur=0;
+  ctx.restore();
+
+  // Win check
+  const honk=vehicles.find(v=>v.id===0);
+  if(honk && !won && honk.col+honk.len>=GRID_COLS){
+    triggerWin();
+  }
+}
+
+function drawVehicle(v,CS){
+  const x=v.col*CS+PADDING, y=v.row*CS+PADDING;
+  const vw=v.horiz?v.len*CS-PADDING*2:CS-PADDING*2;
+  const vh=v.horiz?CS-PADDING*2:v.len*CS-PADDING*2;
+  const R=8;
+  const img=vehicleImages[v.label];
+  const nativeHoriz=true; // all vehicle PNGs ship in horizontal orientation
+
+  ctx.save();
+
+  // Glow when dragged or hinted
+  if(v===dragging){
+    ctx.shadowColor=v.color;
+    ctx.shadowBlur=28;
+  } else if(v===hintVehicle){
+    ctx.shadowColor='#FFD700';
+    ctx.shadowBlur=32;
+  }
+
+  // Drop shadow
+  ctx.fillStyle='rgba(0,0,0,0.38)';
+  roundRect(ctx,x+2,y+5,vw,vh,R);
+  ctx.fill();
+
+  // Colored base covering the full logical footprint — ensures footprint == visual area
+  ctx.fillStyle=v.color+'55';
+  roundRect(ctx,x,y,vw,vh,R);
+  ctx.fill();
+  ctx.strokeStyle=v.color+'aa';
+  ctx.lineWidth=2;
+  roundRect(ctx,x,y,vw,vh,R);
+  ctx.stroke();
+
+  if(img && img.loaded){
+    const cr=VEHICLE_CROP[v.label];
+    if(v.horiz===nativeHoriz){
+      drawImageFit(img,cr,x,y,vw,vh);
+    } else {
+      // Rotate 90° then fit the image within the rotated bounds
+      ctx.translate(x+vw/2, y+vh/2);
+      ctx.rotate(Math.PI/2);
+      drawImageFit(img,cr,-vh/2,-vw/2,vh,vw);
+    }
+  } else {
+    // Fallback — colored rectangle
+    ctx.fillStyle=v.color;
+    roundRect(ctx,x,y,vw,vh,R);
+    ctx.fill();
+    ctx.strokeStyle=v.outline||'#222';
+    ctx.lineWidth=3;
+    roundRect(ctx,x,y,vw,vh,R);
+    ctx.stroke();
+    drawVehicleDetails(v,x,y,vw,vh,CS);
+  }
+
+  ctx.restore();
+}
+
+function drawVehicleDetails(v,x,y,vw,vh,CS){
+  // Windows
+  ctx.fillStyle='rgba(180,230,255,0.85)';
+  ctx.strokeStyle='rgba(0,0,0,0.4)';
+  ctx.lineWidth=1.5;
+  const P=6;
+  if(v.horiz){
+    if(v.id===0){
+      // Taxi: windshield + windows
+      ctx.fillStyle='rgba(180,230,255,0.85)';
+      roundRect(ctx,x+vw*0.35,y+P,vw*0.35,vh-P*2,4);ctx.fill();ctx.stroke();
+      // Taxi stripe
+      ctx.fillStyle='rgba(0,0,0,0.15)';
+      ctx.fillRect(x+2,y+vh*0.42,vw-4,vh*0.16);
+    } else {
+      const ww=Math.min(vw*0.28,26), wh=vh*0.5;
+      for(let i=0;i<Math.max(1,v.len-1);i++){
+        const wx=x+vw*0.15+i*(vw*0.35/(v.len-1||1));
+        roundRect(ctx,wx,y+P,ww,wh,3);ctx.fill();ctx.stroke();
+      }
+    }
+  } else {
+    const ww=vw*0.5, wh=Math.min(vh*0.2,20);
+    for(let i=0;i<Math.max(1,v.len-1);i++){
+      const wy=y+vh*0.15+i*(vh*0.35/(v.len-1||1));
+      roundRect(ctx,x+P,wy,ww,wh,3);ctx.fill();ctx.stroke();
+    }
+  }
+
+  // Label
+  ctx.fillStyle='rgba(0,0,0,0.5)';
+  ctx.font=`bold ${Math.max(8,CS*0.18)}px Arial`;
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.fillText(v.label,x+vw/2,y+vh/2+(v.horiz?vh*0.18:0));
+}
+
+function drawImageFit(img,cr,dx,dy,dw,dh){
+  const ir=cr.sw/cr.sh, br=dw/dh;
+  let fw,fh,ox,oy;
+  if(br>ir){fh=dh;fw=fh*ir;ox=dx+(dw-fw)/2;oy=dy;}
+  else     {fw=dw;fh=fw/ir;ox=dx;oy=dy+(dh-fh)/2;}
+  ctx.drawImage(img,cr.sx,cr.sy,cr.sw,cr.sh,ox,oy,fw,fh);
+}
+
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h);ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);
+  ctx.closePath();
+}
+
+function triggerWin(){
+  won=true;
+  // Count the winning drag move if it hasn't been tallied yet
+  if(dragging && _dragMoved){ moves++; document.getElementById('move-count').textContent=moves; }
+  clearInterval(timerInt);
+  updateFace();
+  const m=moves;
+  const thresholds=[[3,5],[5,8],[8,14]];
+  const [lo,hi]=thresholds[currentLevel]||[999,9999];
+  const starCount=m<=lo?3:(m<=hi?2:1);
+  document.getElementById('win-stars').innerHTML=
+    '<span class="star-icon">⭐</span>'.repeat(starCount)+'<span class="star-icon" style="opacity:0.3">⭐</span>'.repeat(3-starCount);
+  document.getElementById('win-stats').textContent=`${m} moves · ${seconds}s`;
+  coins+=starCount;
+  document.getElementById('coin-count').textContent=coins;
+  localStorage.setItem('gridlock_coins',coins);
+  if(starCount>levelStars[currentLevel]){
+    levelStars[currentLevel]=starCount;
+    localStorage.setItem('gridlock_stars',JSON.stringify(levelStars));
+  }
+  sndWin();
+  // Animate HONK sliding off the right edge, then show win screen
+  animateExit(()=>setTimeout(()=>document.getElementById('win-screen').classList.add('show'),100));
+}
+
+function animateExit(cb){
+  const honk=vehicles.find(v=>v.id===0);
+  if(!honk){cb();return;}
+  const startCol=honk.col;
+  const target=GRID_COLS+0.5;
+  const dur=380;
+  const t0=performance.now();
+  (function frame(now){
+    const p=Math.min(1,(now-t0)/dur);
+    honk.col=startCol+(target-startCol)*p;
+    render();
+    if(p<1) requestAnimationFrame(frame);
+    else cb();
+  })(performance.now());
+}
+
+// ---- INPUT ----
+function getPos(e){
+  const r=canvas.getBoundingClientRect();
+  const t=e.touches?e.touches[0]:e;
+  return {x:t.clientX-r.left, y:t.clientY-r.top};
+}
+
+function getCell(px,py){
+  const CS=W/GRID_COLS;
+  return {col:Math.floor(px/CS), row:Math.floor(py/CS)};
+}
+
+// event listeners registered in setup() after canvas is assigned
+
+function startDrag(e){
+  e.preventDefault();
+  if(won) return;
+  const {x,y}=getPos(e);
+  const {col,row}=getCell(x,y);
+  const v=getVehicleAt(col,row,null);
+  if(!v) return;
+  dragging=v;
+  dragStartCell=v.horiz?v.col:v.row;
+  dragStartPos=v.horiz?x:y;
+  _dragMoved=false;
+  sndPick();
+  render();
+}
+
+let _dragMoved=false;
+
+function doDrag(e){
+  e.preventDefault();
+  if(!dragging) return;
+  const {x,y}=getPos(e);
+  const CS=W/GRID_COLS;
+  const delta=v=>v.horiz?x-dragStartPos:y-dragStartPos;
+  const d=delta(dragging);
+  const rawCell=Math.round(dragStartCell+d/CS);
+  const clampedCell=Math.max(0,Math.min((dragging.horiz?GRID_COLS:GRID_ROWS)-dragging.len,rawCell));
+
+  // Slide as far as possible
+  let best=v=>v.horiz?v.col:v.row;
+  let cur=best(dragging);
+  const target=clampedCell;
+  const dir=Math.sign(target-cur);
+  if(dir!==0){
+    let next=cur+dir;
+    while(next!==target+dir){
+      if(canMoveTo(dragging,next)) { cur=next; next+=dir; }
+      else break;
+    }
+    if(cur!==(dragging.horiz?dragging.col:dragging.row)){
+      _dragMoved=true;
+    }
+    if(dragging.horiz) dragging.col=cur;
+    else dragging.row=cur;
+  }
+  render();
+}
+
+function endDrag(e){
+  if(!dragging) return;
+  if(_dragMoved) { moves++; document.getElementById('move-count').textContent=moves; updateFace(); sndDrop(); }
+  dragging=null;
+  render();
+}
+
+// ---- INIT ----
+document.getElementById('coin-count').textContent=coins;
+setup();
+</script>
+</body>
+</html>
