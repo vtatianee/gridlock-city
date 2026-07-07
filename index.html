@@ -306,6 +306,7 @@ function canMoveTo(v, newPos){
 // ---- DRAWING ----
 const PADDING=4;
 let _listenersAdded=false;
+let DPR=1; // device pixel ratio — render sharp on retina/high-density phones
 
 function resizeCanvas(){
   if(!canvas) return;
@@ -314,10 +315,12 @@ function resizeCanvas(){
   const availH=window.innerHeight-topbarH-12;
   const CS=Math.max(32, Math.floor(Math.min(availW/GRID_COLS, availH/GRID_ROWS)));
   W=GRID_COLS*CS; H=GRID_ROWS*CS;
-  canvas.width=W; canvas.height=H;
+  DPR=Math.min(window.devicePixelRatio||1, 3);
+  // Backing store at physical resolution; CSS box stays at logical size
+  canvas.width=Math.round(W*DPR); canvas.height=Math.round(H*DPR);
   Object.assign(canvas.style,{width:W+'px',height:H+'px'});
   window.CELL_SIZE=CS;
-  ctx=null; // force context re-fetch
+  ctx=null; // force context re-fetch (state, incl. transform, resets)
   if(vehicles.length) render();
 }
 
@@ -340,6 +343,10 @@ function setup(){
 
 function render(){
   if(!ctx){ctx=canvas.getContext('2d');}
+  // Draw in logical (CSS) units; DPR transform makes it sharp on retina phones
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.imageSmoothingEnabled=true;
+  ctx.imageSmoothingQuality='high';
   const CS=W/GRID_COLS;
   ctx.clearRect(0,0,W,H);
 
@@ -376,33 +383,40 @@ function render(){
   const sorted=[...vehicles].sort((a,b)=>(a===dragging?1:b===dragging?-1:0));
   for(const v of sorted) drawVehicle(v,CS);
 
-  // Exit gate drawn AFTER vehicles so it's always visible on top
-  const exitRow=4;
-  const ey=exitRow*CS+CS/2;
+  // Exit gate — ALWAYS locked to HONK's lane so it never looks misplaced.
+  // Drawn as an opening in the right wall (not a filled cell over vehicles).
+  const honk=vehicles.find(v=>v.id===0);
+  const exitRow=honk?honk.row:4;
+  const ey0=exitRow*CS, eyc=ey0+CS/2;
   ctx.save();
-  ctx.fillStyle='rgba(76,175,80,0.22)';
-  ctx.fillRect(W-CS, exitRow*CS, CS, CS);
-  ctx.strokeStyle='#4CAF50'; ctx.lineWidth=3;
-  ctx.setLineDash([5,4]);
-  ctx.strokeRect(W-CS+2, exitRow*CS+2, CS-4, CS-4);
-  ctx.setLineDash([]);
-  ctx.shadowColor='#4CAF50'; ctx.shadowBlur=16;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  // 1) Bright "open gate" glow on the right border of HONK's row
+  ctx.shadowColor='#4CAF50'; ctx.shadowBlur=22;
   ctx.fillStyle='#69F0AE';
-  ctx.fillRect(W-6, exitRow*CS, 6, CS);
+  ctx.fillRect(W-5, ey0+2, 5, CS-4);
   ctx.shadowBlur=0;
-  ctx.strokeStyle='#4CAF50'; ctx.lineWidth=4;
-  ctx.beginPath();ctx.moveTo(W-CS*0.5,ey);ctx.lineTo(W-8,ey);ctx.stroke();
-  ctx.fillStyle='#4CAF50';
-  ctx.beginPath();ctx.moveTo(W,ey);ctx.lineTo(W-14,ey-8);ctx.lineTo(W-14,ey+8);ctx.closePath();ctx.fill();
-  ctx.fillStyle='#fff'; ctx.font=`bold ${CS*0.22}px Arial`;
-  ctx.textAlign='center';
-  ctx.shadowColor='#000'; ctx.shadowBlur=4;
-  ctx.fillText('EXIT',W-CS/2,exitRow*CS+CS*0.25);
-  ctx.shadowBlur=0;
+  // 2) Outward-pointing chevrons hugging the wall (exit direction)
+  ctx.strokeStyle='#69F0AE'; ctx.lineWidth=Math.max(3,CS*0.06); ctx.lineCap='round'; ctx.lineJoin='round';
+  const chev=CS*0.16;
+  for(let i=0;i<2;i++){
+    const cx=W-CS*0.30+i*chev*0.9;
+    ctx.beginPath();
+    ctx.moveTo(cx-chev*0.5, eyc-chev);
+    ctx.lineTo(cx+chev*0.5, eyc);
+    ctx.lineTo(cx-chev*0.5, eyc+chev);
+    ctx.stroke();
+  }
+  // 3) "EXIT" label on a dark chip so it's legible over any vehicle beneath it
+  ctx.font=`bold ${Math.max(9,CS*0.17)}px Arial`;
+  const tw=ctx.measureText('EXIT').width;
+  const chipH=CS*0.30, chipY=ey0+CS*0.02;
+  ctx.fillStyle='rgba(6,10,18,0.78)';
+  roundRect(ctx, W-CS/2-tw/2-5, chipY, tw+10, chipH, 4); ctx.fill();
+  ctx.fillStyle='#69F0AE';
+  ctx.fillText('EXIT', W-CS/2, chipY+chipH/2+1);
   ctx.restore();
 
   // Win check
-  const honk=vehicles.find(v=>v.id===0);
   if(honk && !won && honk.col+honk.len>=GRID_COLS){
     triggerWin();
   }
@@ -432,11 +446,13 @@ function drawVehicle(v,CS){
   roundRect(ctx,x+2,y+5,vw,vh,R);
   ctx.fill();
 
-  // Colored base covering the full logical footprint — ensures footprint == visual area
-  ctx.fillStyle=v.color+'55';
+  // Neutral slot base (dark, not colored) — marks the footprint without
+  // creating colored halos around the sprite's letterboxed edges.
+  ctx.fillStyle='rgba(0,0,0,0.16)';
   roundRect(ctx,x,y,vw,vh,R);
   ctx.fill();
-  ctx.strokeStyle=v.color+'aa';
+  // Thin colored rim keeps per-vehicle color identity without a filled slab
+  ctx.strokeStyle=v.color+'99';
   ctx.lineWidth=2;
   roundRect(ctx,x,y,vw,vh,R);
   ctx.stroke();
