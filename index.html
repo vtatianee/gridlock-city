@@ -117,19 +117,8 @@ const VEHICLE_SRC={
   LIMO:  'assets/vehicles/limo.png',
   MOTO:  'assets/vehicles/moto.png',
 };
-// Tight content crop per vehicle (alpha-channel bbox) — the source PNGs have
-// 30-50% transparent padding at wildly different ratios per vehicle, which
-// stretched/distorted cars when the full canvas was drawn into the grid cell.
-const VEHICLE_CROP={
-  HONK:  {sx:51, sy:14, sw:574, sh:313},
-  POLICE:{sx:83, sy:27, sw:512, sh:326},
-  BUS:   {sx:44, sy:73, sw:586, sh:223},
-  TRUCK: {sx:44, sy:73, sw:589, sh:223},
-  FIRE:  {sx:44, sy:73, sw:589, sh:223},
-  VAN:   {sx:51, sy:73, sw:579, sh:223},
-  LIMO:  {sx:47, sy:73, sw:583, sh:223},
-  MOTO:  {sx:47, sy:69, sw:583, sh:233},
-};
+// Sprites are pre-trimmed to their alpha bbox at export time (~512px wide),
+// so the full image is drawn directly — no per-vehicle crop needed.
 const vehicleImages={};
 for(const [label,src] of Object.entries(VEHICLE_SRC)){
   const img=new Image();
@@ -458,14 +447,13 @@ function drawVehicle(v,CS){
   ctx.stroke();
 
   if(img && img.loaded){
-    const cr=VEHICLE_CROP[v.label];
     if(v.horiz===nativeHoriz){
-      drawImageFit(img,cr,x,y,vw,vh);
+      drawImageFit(img,null,x,y,vw,vh);
     } else {
       // Rotate 90° then fit the image within the rotated bounds
       ctx.translate(x+vw/2, y+vh/2);
       ctx.rotate(Math.PI/2);
-      drawImageFit(img,cr,-vh/2,-vw/2,vh,vw);
+      drawImageFit(img,null,-vh/2,-vw/2,vh,vw);
     }
   } else {
     // Fallback — colored rectangle
@@ -520,6 +508,8 @@ function drawVehicleDetails(v,x,y,vw,vh,CS){
 }
 
 function drawImageFit(img,cr,dx,dy,dw,dh){
+  // Sprites are pre-trimmed to their alpha bbox, so default to the whole image
+  if(!cr) cr={sx:0, sy:0, sw:img.naturalWidth, sh:img.naturalHeight};
   const ir=cr.sw/cr.sh, br=dw/dh;
   let fw,fh,ox,oy;
   if(br>ir){fh=dh;fw=fh*ir;ox=dx+(dw-fw)/2;oy=dy;}
